@@ -29,18 +29,36 @@ const client = new MongoClient(uri, {
   },
 });
 
+app.get("/", (req, res) => {
+  res.send("Server is live!");
+});
+
 async function run() {
   try {
     await client.connect();
 
     const parcelsCollection = client.db("zap-shift-DB").collection("parcels");
 
-    app.get("/", (req, res) => {
-      res.send("Server is live!");
+    app.get("/parcels", async (req, res) => {
+      const query = {};
+      const email = req.query.email;
+      if (email) {
+        query.senderEmail = email;
+      }
+      const options = {
+        sort: {
+          creation_date: -1,
+        },
+      };
+      0;
+      const cursor = parcelsCollection.find(query, options);
+      const result = await cursor.toArray();
+      res.send(result);
     });
 
-    app.get("/parcels", async (req, res) => {
-      const result = await parcelsCollection.find().toArray();
+    app.post("/parcels", async (req, res) => {
+      const parcel = req.body;
+      const result = await parcelsCollection.insertOne(parcel);
       res.send(result);
     });
 
