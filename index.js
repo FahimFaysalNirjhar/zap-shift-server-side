@@ -104,6 +104,22 @@ async function run() {
       const sessionId = req.query.session_id;
       const session = await stripe.checkout.sessions.retrieve(sessionId);
       const trackingId = generateTrackingId();
+      const transationId = session.payment_intent;
+
+      const query = {
+        transationId: transationId,
+      };
+
+      const paymentExist = await paymentsCollection.findOne(query);
+
+      if (paymentExist) {
+        return res.send({
+          success: true,
+          message: "Already Exists",
+          transationId,
+          trackingId: paymentExist.trackingId,
+        });
+      }
 
       console.log(session);
 
