@@ -141,6 +141,7 @@ async function run() {
           parcelId: session.metadata.parcelId,
           parcelName: session.metadata.name,
           transationId: session.payment_intent,
+          trackingId: trackingId,
           paymentStatus: session.payment_status,
           paidAt: new Date().toISOString(),
         };
@@ -160,6 +161,19 @@ async function run() {
 
         return res.send(result);
       }
+    });
+
+    app.get("/payments", async (req, res) => {
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.customerEmail = email;
+      }
+
+      const cursor = paymentsCollection.find(query).sort({ paidAt: -1 });
+      const result = await cursor.toArray();
+
+      res.send(result);
     });
 
     app.post("/parcels", async (req, res) => {
