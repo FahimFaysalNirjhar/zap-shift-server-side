@@ -12,8 +12,43 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET);
 const app = express();
 const port = process.env.PORT || 5000;
 
+const { initializeApp, cert } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
+
+const serviceAccount = require("./zap-shift-firebase-adminsdk.json");
+
+const firebaseApp = initializeApp({
+  credential: cert(serviceAccount),
+});
+
 app.use(cors());
 app.use(express.json());
+
+const verifyFBToken = async (req, res, next) => {
+  const token = req.headers.authorization;
+
+  console.log(token);
+
+  if (!token) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+
+  try {
+    const idToken = token.split(" ")[1];
+    const decoded = await getAuth(firebaseApp).verifyIdToken(idToken);
+    console.log("decoded", decoded);
+    req.decoded_email = decoded.email;
+    next();
+  } catch (error) {
+    console.error(error);
+
+    if (error.code === "auth/id-token-expired") {
+      return res.status(401).send({ message: "token expired" });
+    }
+
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+};
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${encodeURIComponent(
   process.env.DB_PASSWORD,
@@ -163,11 +198,15 @@ async function run() {
       }
     });
 
-    app.get("/payments", async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
       const email = req.query.email;
       const query = {};
       if (email) {
         query.customerEmail = email;
+
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
       }
 
       const cursor = paymentsCollection.find(query).sort({ paidAt: -1 });
