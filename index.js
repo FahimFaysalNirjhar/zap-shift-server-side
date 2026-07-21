@@ -80,6 +80,7 @@ async function run() {
 
     const parcelsCollection = client.db("zap-shift-DB").collection("parcels");
     const paymentsCollection = client.db("zap-shift-DB").collection("payments");
+    const usersCollection = client.db("zap-shift-DB").collection("users");
 
     app.get("/parcels", async (req, res) => {
       const query = {};
@@ -225,6 +226,15 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await parcelsCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    // user related apis
+
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      user.role = "user";
+      const result = await usersCollection.insertOne(user);
       res.send(result);
     });
 
