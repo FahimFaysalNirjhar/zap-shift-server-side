@@ -231,7 +231,7 @@ async function run() {
 
     // user related apis
 
-    app.post("/users", async (req, res) => {
+    app.post("/users", verifyFBToken, async (req, res) => {
       const user = req.body;
       user.role = "user";
       const result = await usersCollection.insertOne(user);
