@@ -81,7 +81,7 @@ async function run() {
     const parcelsCollection = client.db("zap-shift-DB").collection("parcels");
     const paymentsCollection = client.db("zap-shift-DB").collection("payments");
     const usersCollection = client.db("zap-shift-DB").collection("users");
-    const riderCollection = client.db("zap-shift-DB").collection("riders");
+    const ridersCollection = client.db("zap-shift-DB").collection("riders");
 
     app.get("/parcels", async (req, res) => {
       const query = {};
@@ -222,7 +222,49 @@ async function run() {
       const rider = req.body;
       rider.status = "pending";
       rider.created_at = new Date().toISOString();
-      const result = await riderCollection.insertOne(rider);
+      const result = await ridersCollection.insertOne(rider);
+      res.send(result);
+    });
+
+    app.get("/riders", async (req, res) => {
+      const query = {};
+      if (req.query.status) {
+        query.status = req.query.status;
+      }
+      const cursor = ridersCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    app.patch("/riders/:riderId", verifyFBToken, async (req, res) => {
+      const id = req.params.riderId;
+      const status = req.body.status;
+      const query = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          status: status,
+        },
+      };
+      const result = await ridersCollection.updateOne(query, updateDoc);
+
+      if (status === "accepted") {
+        const email = req.body.email;
+        const userQuery = { email };
+        const updateUser = {
+          $set: {
+            role: "rider",
+          },
+        };
+        await usersCollection.updateOne(userQuery, updateUser);
+      }
+
+      res.send(result);
+    });
+
+    app.delete("/riders/:riderId", async (req, res) => {
+      const id = req.params.riderId;
+      const query = { _id: new ObjectId(id) };
+      const result = await ridersCollection.deleteOne(query);
       res.send(result);
     });
 
