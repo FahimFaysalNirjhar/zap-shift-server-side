@@ -81,6 +81,7 @@ async function run() {
     const parcelsCollection = client.db("zap-shift-DB").collection("parcels");
     const paymentsCollection = client.db("zap-shift-DB").collection("payments");
     const usersCollection = client.db("zap-shift-DB").collection("users");
+    const riderCollection = client.db("zap-shift-DB").collection("riders");
 
     app.get("/parcels", async (req, res) => {
       const query = {};
@@ -216,6 +217,15 @@ async function run() {
       res.send(result);
     });
 
+    // rider related apis
+    app.post("/riders", async (req, res) => {
+      const rider = req.body;
+      rider.status = "pending";
+      rider.created_at = new Date().toISOString();
+      const result = await riderCollection.insertOne(rider);
+      res.send(result);
+    });
+
     app.post("/parcels", async (req, res) => {
       const parcel = req.body;
       const result = await parcelsCollection.insertOne(parcel);
@@ -234,6 +244,11 @@ async function run() {
     app.post("/users", verifyFBToken, async (req, res) => {
       const user = req.body;
       user.role = "user";
+      const email = user.email;
+      const userExists = await usersCollection.findOne({ email });
+      if (userExists) {
+        return res.send({ message: "User already exists." });
+      }
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
