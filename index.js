@@ -301,7 +301,14 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/users/:userId", async (req, res) => {
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const user = await usersCollection.findOne({ email });
+      res.send({ role: user?.role || "user" });
+    });
+
+    app.patch("/users/:userId", verifyFBToken, async (req, res) => {
       const id = req.params.userId;
       const roleInfo = req.body;
       const query = { _id: new ObjectId(id) };
