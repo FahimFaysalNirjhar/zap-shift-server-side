@@ -295,6 +295,25 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/users", verifyFBToken, async (req, res) => {
+      const cursor = usersCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    app.patch("/users/:userId", async (req, res) => {
+      const id = req.params.userId;
+      const roleInfo = req.body;
+      const query = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          role: roleInfo.role,
+        },
+      };
+      const result = await usersCollection.updateOne(query, updateDoc);
+      res.send(result);
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log("✅ MongoDB connected");
   } catch (error) {
