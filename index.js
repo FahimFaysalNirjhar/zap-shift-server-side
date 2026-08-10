@@ -140,7 +140,7 @@ async function run() {
     app.patch("/payment-success", async (req, res) => {
       const sessionId = req.query.session_id;
       const session = await stripe.checkout.sessions.retrieve(sessionId);
-      const trackingId = generateTrackingId();
+
       const transationId = session.payment_intent;
 
       const query = {
@@ -161,11 +161,13 @@ async function run() {
       console.log(session);
 
       if (session.payment_status === "paid") {
+        const trackingId = generateTrackingId();
         const id = session.metadata.parcelId;
         const query = { _id: new ObjectId(id) };
         const update = {
           $set: {
             isPaid: true,
+            deliveryStatus: "pending-pickup",
             trackingId: trackingId,
           },
         };
@@ -243,6 +245,7 @@ async function run() {
       const updateDoc = {
         $set: {
           status: status,
+          workStatus: "available",
         },
       };
       const result = await ridersCollection.updateOne(query, updateDoc);
@@ -281,6 +284,19 @@ async function run() {
       res.send(result);
     });
 
+    // middleware
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user?.role !== "admin") {
+        return res
+          .status(403)
+          .send({ message: "You Are Forbidden to Access This Page" });
+      }
+      next();
+    };
+
     // user related apis
 
     app.post("/users", verifyFBToken, async (req, res) => {
@@ -308,18 +324,23 @@ async function run() {
       res.send({ role: user?.role || "user" });
     });
 
-    app.patch("/users/:userId", verifyFBToken, async (req, res) => {
-      const id = req.params.userId;
-      const roleInfo = req.body;
-      const query = { _id: new ObjectId(id) };
-      const updateDoc = {
-        $set: {
-          role: roleInfo.role,
-        },
-      };
-      const result = await usersCollection.updateOne(query, updateDoc);
-      res.send(result);
-    });
+    app.patch(
+      "/users/:userId/role",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.userId;
+        const roleInfo = req.body;
+        const query = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: {
+            role: roleInfo.role,
+          },
+        };
+        const result = await usersCollection.updateOne(query, updateDoc);
+        res.send(result);
+      },
+    );
 
     await client.db("admin").command({ ping: 1 });
     console.log("✅ MongoDB connected");
