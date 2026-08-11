@@ -84,10 +84,14 @@ async function run() {
     const ridersCollection = client.db("zap-shift-DB").collection("riders");
 
     app.get("/parcels", async (req, res) => {
+      const { email, deliveryStatus } = req.query;
       const query = {};
-      const email = req.query.email;
+
       if (email) {
         query.senderEmail = email;
+      }
+      if (deliveryStatus) {
+        query.deliveryStatus = deliveryStatus;
       }
       const options = {
         sort: {
@@ -106,6 +110,8 @@ async function run() {
       const result = await parcelsCollection.findOne(query);
       res.send(result);
     });
+
+    // payment related apis
 
     app.post("/create-checkout-session", async (req, res) => {
       const paymentInfo = req.body;
@@ -229,10 +235,20 @@ async function run() {
     });
 
     app.get("/riders", async (req, res) => {
+      const { status, district, workStatus } = req.query;
       const query = {};
-      if (req.query.status) {
-        query.status = req.query.status;
+      if (status) {
+        query.status = status;
       }
+
+      if (district) {
+        query.riderDistrict = district;
+      }
+
+      if (workStatus) {
+        query.workStatus = workStatus;
+      }
+
       const cursor = ridersCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
@@ -271,6 +287,8 @@ async function run() {
       res.send(result);
     });
 
+    // ............./parcels/...............//
+
     app.post("/parcels", async (req, res) => {
       const parcel = req.body;
       const result = await parcelsCollection.insertOne(parcel);
@@ -282,6 +300,32 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const result = await parcelsCollection.deleteOne(query);
       res.send(result);
+    });
+
+    app.patch("/parcels/:id", async (req, res) => {
+      const { riderName, riderEmail, riderId } = req.body;
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          deliveryStatus: "driver_assigned",
+          riderId: riderId,
+          riderEmail: riderEmail,
+          riderName: riderName,
+        },
+      };
+      const result = await parcelsCollection.updateOne(query, updatedDoc);
+      const riderOuery = { _id: new ObjectId(riderId) };
+      const riderUpdatedDoc = {
+        $set: {
+          workStatus: "in_delivery",
+        },
+      };
+      const riderResult = await ridersCollection.updateOne(
+        riderOuery,
+        riderUpdatedDoc,
+      );
+      res.result(riderResult);
     });
 
     // middleware
