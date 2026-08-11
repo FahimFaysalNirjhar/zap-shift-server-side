@@ -104,6 +104,20 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/parcels/rider", async (req, res) => {
+      const { riderEmail, deliveryStatus } = req.query;
+      const query = {};
+      if (riderEmail) {
+        query.riderEmail = riderEmail;
+      }
+      if (deliveryStatus) {
+        query.deliveryStatus = { $in: deliveryStatus.split(",") };
+      }
+      const cursor = parcelsCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
     app.get("/parcels/:Id", async (req, res) => {
       const id = req.params.Id;
       const query = { _id: new ObjectId(id) };
@@ -295,10 +309,38 @@ async function run() {
       res.send(result);
     });
 
+    // app.get("/parcels/rider", async (req, res) => {
+    //   const { riderEmail, deliveryStatus } = req.query;
+    //   const query = {};
+    //   if (riderEmail) {
+    //     query.riderEmail = riderEmail;
+    //   }
+
+    //   if (deliveryStatus) {
+    //     query.deliveryStatus = { $nin: ["parcel_delivered"] };
+    //   }
+    //   const cursor = parcelsCollection.find(query);
+    //   const result = await cursor.toArray();
+    //   res.send(result);
+    // });
+
     app.delete("/parcels/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await parcelsCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    app.patch("/parcels/:id/status", async (req, res) => {
+      const id = req.params.id;
+      const { deliveryStatus } = req.body;
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          deliveryStatus: deliveryStatus,
+        },
+      };
+      const result = await parcelsCollection.updateOne(query, updatedDoc);
       res.send(result);
     });
 
@@ -325,7 +367,7 @@ async function run() {
         riderOuery,
         riderUpdatedDoc,
       );
-      res.result(riderResult);
+      res.send(riderResult);
     });
 
     // middleware
