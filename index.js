@@ -319,6 +319,15 @@ async function run() {
       res.send(result);
     });
 
+    // tracking related apis
+
+    app.get("/trackings/:trackingId/logs", async (req, res) => {
+      const trackingId = req.params.trackingId;
+      const query = { trackingId };
+      const result = await trackingsCollection.find(query).toArray();
+      res.send(result);
+    });
+
     // ............./parcels/...............//
 
     app.post("/parcels", async (req, res) => {
@@ -413,6 +422,18 @@ async function run() {
       const query = { email };
       const user = await usersCollection.findOne(query);
       if (!user || user?.role !== "admin") {
+        return res
+          .status(403)
+          .send({ message: "You Are Forbidden to Access This Page" });
+      }
+      next();
+    };
+
+    const verifyRider = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user?.role !== "rider") {
         return res
           .status(403)
           .send({ message: "You Are Forbidden to Access This Page" });
