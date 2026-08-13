@@ -17,5 +17,8 @@
     "firebase-admin": "^14.2.0",
     "mongodb": "^7.5.0",
     "stripe": "^22.3.2"
+  },
+  "overrides": {
+    "jose": "^4.15.5"
   }
 }
