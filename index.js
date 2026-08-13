@@ -15,7 +15,13 @@ const port = process.env.PORT || 5000;
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 
-const serviceAccount = require("./zap-shift-firebase-adminsdk.json");
+// const serviceAccount = require("./zap-shift-firebase-adminsdk.json");
+const { count } = require("console");
+
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf8",
+);
+const serviceAccount = JSON.parse(decoded);
 
 const firebaseApp = initializeApp({
   credential: cert(serviceAccount),
@@ -27,7 +33,7 @@ app.use(express.json());
 const verifyFBToken = async (req, res, next) => {
   const token = req.headers.authorization;
 
-  console.log(token);
+  // console.log(token);
 
   if (!token) {
     return res.status(401).send({ message: "unauthorized access" });
@@ -36,7 +42,7 @@ const verifyFBToken = async (req, res, next) => {
   try {
     const idToken = token.split(" ")[1];
     const decoded = await getAuth(firebaseApp).verifyIdToken(idToken);
-    console.log("decoded", decoded);
+    // console.log("decoded", decoded);
     req.decoded_email = decoded.email;
     next();
   } catch (error) {
@@ -97,6 +103,31 @@ async function run() {
       return result;
     };
 
+    // middleware
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user?.role !== "admin") {
+        return res
+          .status(403)
+          .send({ message: "You Are Forbidden to Access This Page" });
+      }
+      next();
+    };
+
+    const verifyRider = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user?.role !== "rider") {
+        return res
+          .status(403)
+          .send({ message: "You Are Forbidden to Access This Page" });
+      }
+      next();
+    };
+
     app.get("/parcels", async (req, res) => {
       const { email, deliveryStatus } = req.query;
       const query = {};
@@ -130,6 +161,84 @@ async function run() {
       const cursor = parcelsCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
+    });
+
+    app.get(
+      "/parcels/deliver-status/stats",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const pipeline = [
+          { $group: { _id: "$deliveryStatus", count: { $sum: 1 } } },
+        ];
+        const result = await parcelsCollection.aggregate(pipeline).toArray();
+        res.send(result);
+      },
+    );
+
+    app.get("/parcels/stats", verifyFBToken, async (req, res) => {
+      try {
+        const email = req.query.email;
+
+        if (!email) {
+          return res.status(400).send({ message: "email is required" });
+        }
+
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+
+        const pipeline = [
+          { $match: { senderEmail: email } },
+          {
+            $group: {
+              _id: "$deliveryStatus",
+              count: { $sum: 1 },
+              totalCost: { $sum: { $toDouble: "$cost" } },
+            },
+          },
+        ];
+
+        const statusBreakdown = await parcelsCollection
+          .aggregate(pipeline)
+          .toArray();
+
+        const summaryPipeline = [
+          { $match: { senderEmail: email } },
+          {
+            $group: {
+              _id: null,
+              totalParcels: { $sum: 1 },
+              totalCost: { $sum: { $toDouble: "$cost" } },
+              totalPaid: {
+                $sum: { $cond: [{ $eq: ["$isPaid", true] }, 1, 0] },
+              },
+              totalUnpaid: {
+                $sum: { $cond: [{ $eq: ["$isPaid", true] }, 0, 1] },
+              },
+            },
+          },
+        ];
+
+        const summaryResult = await parcelsCollection
+          .aggregate(summaryPipeline)
+          .toArray();
+
+        const summary = summaryResult[0] ?? {
+          totalParcels: 0,
+          totalCost: 0,
+          totalPaid: 0,
+          totalUnpaid: 0,
+        };
+
+        res.send({
+          summary,
+          statusBreakdown,
+        });
+      } catch (error) {
+        console.error("Error fetching user parcel stats:", error);
+        res.status(500).send({ message: "Failed to load parcel stats" });
+      }
     });
 
     app.get("/parcels/:Id", async (req, res) => {
@@ -193,7 +302,7 @@ async function run() {
         });
       }
 
-      console.log(session);
+      // console.log(session);
 
       if (session.payment_status === "paid") {
         const trackingId = session.metadata.trackingId;
@@ -220,7 +329,7 @@ async function run() {
           paidAt: new Date().toISOString(),
         };
 
-        console.log("Payment Object:", payment);
+        // console.log("Payment Object:", payment);
 
         if (session.payment_status === "paid") {
           const resultPayment = await paymentsCollection.insertOne(payment);
@@ -286,6 +395,89 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/riders/stats", verifyFBToken, verifyRider, async (req, res) => {
+      try {
+        const email = req.query.email;
+
+        if (!email) {
+          return res.status(400).send({ message: "email is required" });
+        }
+
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+
+        const pipeline = [
+          { $match: { riderEmail: email } },
+          {
+            $group: {
+              _id: "$deliveryStatus",
+              count: { $sum: 1 },
+            },
+          },
+        ];
+
+        const statusBreakdown = await parcelsCollection
+          .aggregate(pipeline)
+          .toArray();
+
+        // Payout only applies to delivered parcels — same 80%/60% split as the frontend
+        const payoutPipeline = [
+          { $match: { riderEmail: email, deliveryStatus: "delivered" } },
+          {
+            $project: {
+              cost: { $toDouble: "$cost" },
+              sameDistrict: {
+                $eq: ["$senderDistrict", "$receiverDistrict"],
+              },
+            },
+          },
+          {
+            $project: {
+              payout: {
+                $cond: [
+                  "$sameDistrict",
+                  { $multiply: ["$cost", 0.8] },
+                  { $multiply: ["$cost", 0.6] },
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalDelivered: { $sum: 1 },
+              totalEarnings: { $sum: "$payout" },
+            },
+          },
+        ];
+
+        const payoutResult = await parcelsCollection
+          .aggregate(payoutPipeline)
+          .toArray();
+
+        const earnings = payoutResult[0] ?? {
+          totalDelivered: 0,
+          totalEarnings: 0,
+        };
+
+        const totalAssigned = statusBreakdown.reduce(
+          (sum, s) => sum + s.count,
+          0,
+        );
+
+        res.send({
+          totalAssigned,
+          totalDelivered: earnings.totalDelivered,
+          totalEarnings: earnings.totalEarnings,
+          statusBreakdown,
+        });
+      } catch (error) {
+        console.error("Error fetching rider stats:", error);
+        res.status(500).send({ message: "Failed to load rider stats" });
+      }
+    });
+
     app.patch("/riders/:riderId", verifyFBToken, async (req, res) => {
       const id = req.params.riderId;
       const status = req.body.status;
@@ -311,6 +503,30 @@ async function run() {
 
       res.send(result);
     });
+
+    app.get(
+      "/riders/status/stats",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const pipeline = [{ $group: { _id: "$status", count: { $sum: 1 } } }];
+        const result = await ridersCollection.aggregate(pipeline).toArray();
+        res.send(result);
+      },
+    );
+
+    app.get(
+      "/riders/work-status/stats",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const pipeline = [
+          { $group: { _id: "$workStatus", count: { $sum: 1 } } },
+        ];
+        const result = await ridersCollection.aggregate(pipeline).toArray();
+        res.send(result);
+      },
+    );
 
     app.delete("/riders/:riderId", async (req, res) => {
       const id = req.params.riderId;
@@ -416,31 +632,6 @@ async function run() {
       res.send(riderResult);
     });
 
-    // middleware
-    const verifyAdmin = async (req, res, next) => {
-      const email = req.decoded_email;
-      const query = { email };
-      const user = await usersCollection.findOne(query);
-      if (!user || user?.role !== "admin") {
-        return res
-          .status(403)
-          .send({ message: "You Are Forbidden to Access This Page" });
-      }
-      next();
-    };
-
-    const verifyRider = async (req, res, next) => {
-      const email = req.decoded_email;
-      const query = { email };
-      const user = await usersCollection.findOne(query);
-      if (!user || user?.role !== "rider") {
-        return res
-          .status(403)
-          .send({ message: "You Are Forbidden to Access This Page" });
-      }
-      next();
-    };
-
     // user related apis
 
     app.post("/users", verifyFBToken, async (req, res) => {
@@ -486,7 +677,7 @@ async function run() {
       },
     );
 
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log("✅ MongoDB connected");
   } catch (error) {
     console.error(error);
@@ -495,6 +686,8 @@ async function run() {
 
 run().catch(console.dir);
 
-app.listen(port, () => {
-  console.log(` Server running on port ${port}`);
-});
+if (process.env.NODE_ENV !== "production") {
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
+}
