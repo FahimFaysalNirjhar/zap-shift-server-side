@@ -3,7 +3,7 @@
 This is the backend API for **ZapShift**, a full-stack parcel delivery management platform. It handles auth verification, parcel and rider data, payments, and delivery tracking for the client app.
 
 - **Live API:** https://zap-shift-server-side-three.vercel.app
-- **Client Repo/Site:** https://github.com/FahimFaysalNirjhar/zap-shift-client-side
+- **Client Repo:** https://github.com/FahimFaysalNirjhar/zap-shift-client-side
 - **Live Site:** https://zapshift-app.surge.sh
 
 ## 🛠️ Tech Stack
